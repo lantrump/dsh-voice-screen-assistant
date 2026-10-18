@@ -1,0 +1,20 @@
+{
+    "name": "dsh-voice-screen-assistant",
+    "version": "1.0.0",
+    "description": "Voice and screen desktop assistant (Electron + local Whisper + DeepSeek vision)",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "test": "powershell -ExecutionPolicy Bypass -File tests/run-tests.ps1"
+    },
+    "author": "DSH",
+    "license": "MIT",
+    "keywords": [],
+    "type": "commonjs",
+    "devDependencies": {
+        "electron": "^43.4.1"
+    },
+    "dependencies": {
+        "opencc-js": "^1.4.2"
+    }
+}

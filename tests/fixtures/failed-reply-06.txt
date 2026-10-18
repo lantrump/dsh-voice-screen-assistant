@@ -1,0 +1,5 @@
+{"action":"double","target":"【测试】人工智能简介 条目","x":240,"y":917,"say":"单击两次都无反应，改用双击尝试打开该测验条目"}
+
+Wait, the action name must be "click" with "double":true. Let me correct.
+
+{"action":"click","target":"【测试】人工智能简介 条目","x":240,"y":917,"double":true,"say":"单击两次都无反应，改用双击尝试打开该测验条目"}

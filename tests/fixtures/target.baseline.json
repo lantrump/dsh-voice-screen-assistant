@@ -1,0 +1,36 @@
+{
+  "recordedAt": "2026-09-27T17:54:21.145Z",
+  "source": "tests/live/test-crop-feedback.mjs 臂A（只看整屏图，归一化坐标）",
+  "model": "deepseek-flash",
+  "repeat": 3,
+  "elements": 3,
+  "trials": 9,
+  "meanErrorPx": 12.8,
+  "hitRate": "5/9",
+  "perElement": [
+    {
+      "key": "选项A 单选圆点",
+      "errs": [
+        13.5,
+        9.6,
+        12.8
+      ]
+    },
+    {
+      "key": "选项B 单选圆点",
+      "errs": [
+        6.7,
+        12.8,
+        14
+      ]
+    },
+    {
+      "key": "选项D 单选圆点",
+      "errs": [
+        18.7,
+        13.8,
+        13.6
+      ]
+    }
+  ]
+}

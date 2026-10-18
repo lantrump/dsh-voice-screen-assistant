@@ -1,0 +1,7 @@
+node_modules/
+runs/
+__pycache__/
+*.pyc
+tests/last-run.log
+tests/live/_work/
+*.log

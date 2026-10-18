@@ -1,0 +1,9 @@
+<｜｜DSML｜｜ calls>
+<｜｜DSML｜｜ invoke name="scroll">
+<｜｜DSML｜｜ parameter name="direction" string="true">down</｜｜DSML｜｜ parameter>
+<｜｜DSML｜｜ parameter name="amount" string="false">3</｜｜DSML｜｜ parameter>
+<｜｜DSML｜｜ parameter name="x" string="false">480</｜｜DSML｜｜ parameter>
+<｜｜DSML｜｜ parameter name="y" string="false">700</｜｜DSML｜｜ parameter>
+<｜｜DSML｜｜ parameter name="say" string="true">滚动下方内容区，查看章节测验的入口</｜｜DSML｜｜ parameter>
+</｜｜DSML｜｜ invoke>
+</｜｜DSML｜｜ calls>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>DSH 语音助手</title>
+<style>
+  :root { --panel:#1d232c; --panel2:#262d38; --border:#333b46; --text:#e8edf3; --muted:#8a94a3; --accent:#4f8cff; --live:#3fd68f; --danger:#ff5d5d; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; background:transparent !important; color:var(--text); overflow:hidden; user-select:none; }
+  button { cursor:pointer; font-family:inherit; }
+  ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  body { -webkit-app-region: drag; }   /* whole frameless window draggable */
+  button, select, input { -webkit-app-region: no-drag; }
+
+  /* ===== 准备态卡片 ===== */
+  #setup {
+    position:absolute; inset:0; margin:10px; display:flex; flex-direction:column; gap:10px;
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:12px; box-shadow:0 12px 36px rgba(0,0,0,.5);
+  }
+  #setup .s-title { font-size:13px; color:var(--text); display:flex; align-items:center; gap:8px; }
+  #setup .s-title .spacer { flex:1; }
+  #setup .tb-btn { background:none; border:none; color:var(--muted); font-size:15px; width:24px; height:24px; }
+  #setup .tb-btn:hover { color:var(--text); background:var(--panel2); border-radius:4px; }
+
+  .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .btn { border:1px solid var(--border); background:var(--panel2); color:var(--text); padding:7px 12px; border-radius:8px; font-size:12px; }
+  .btn:hover { background:#313a46; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.primary:hover { background:#3f7ae6; }
+
+  #micDot { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+  #micDot .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); }
+  #micDot.listening .dot { background:var(--live); box-shadow:0 0 8px var(--live); animation:pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  #sourceRow { font-size:11px; color:var(--muted); display:flex; gap:6px; align-items:center; }
+  #sourceSel { flex:1; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:5px 6px; font-size:11px; }
+
+  #preview { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#000; aspect-ratio:16/9; position:relative; }
+  #preview img { width:100%; height:100%; object-fit:contain; display:block; }
+  #preview .ph { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:11px; text-align:center; }
+
+  #keyStatus { font-size:11px; color:var(--muted); }
+
+  /* ===== 运行态小状态条 ===== */
+  #active {
+    position:absolute; left:0; right:0; top:0; display:none; flex-direction:column;
+    background:transparent;
+  }
+  #active .statusbar {
+    display:flex; align-items:center; gap:8px; padding:6px 10px; margin:6px;
+    background:rgba(20,24,31,.72); border:1px solid var(--border); border-radius:18px;
+    box-shadow:0 6px 20px rgba(0,0,0,.35); backdrop-filter:blur(6px);
+  }
+  #active .statusbar .dot { width:10px; height:10px; border-radius:50%; background:var(--muted); }
+  #active .statusbar .dot.on { background:var(--live); box-shadow:0 0 8px var(--live); animation:pulse 1.4s infinite; }
+  #active .statusbar .stxt { flex:1; font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #active .statusbar .sbtn { background:none; border:none; color:var(--muted); font-size:14px; width:22px; height:22px; }
+  #active .statusbar .sbtn:hover { color:var(--text); }
+
+  /* 按住 T 时的提示：要一眼能看见（任务跑着的时候也知道它在听你） */
+  #pttHud {
+    display:none; align-items:center; gap:8px; margin:0 6px 6px;
+    padding:8px 12px; border-radius:12px; color:#fff; font-size:13px; font-weight:600;
+    background:rgba(226,74,74,.94); box-shadow:0 0 0 2px rgba(226,74,74,.35), 0 8px 22px rgba(226,74,74,.4);
+    animation:pttPulse 1s infinite; -webkit-app-region:no-drag;
+  }
+  #pttHud.show { display:flex; }
+  #pttHud.busy { background:rgba(79,140,255,.94); box-shadow:0 0 0 2px rgba(79,140,255,.35), 0 8px 22px rgba(79,140,255,.4); animation:none; }
+  #pttHud .ico { font-size:15px; }
+  @keyframes pttPulse { 0%,100%{ box-shadow:0 0 0 2px rgba(226,74,74,.35), 0 8px 22px rgba(226,74,74,.4); } 50%{ box-shadow:0 0 0 7px rgba(226,74,74,.10), 0 8px 22px rgba(226,74,74,.4); } }
+
+  /* 答案小窗，有答案时显示，可拖动 */
+  #active .answerbar {
+    display:none; margin:0 6px 6px 6px; padding:10px 12px; max-height:40vh; overflow-y:auto;
+    background:rgba(29,35,44,.9); border:1px solid var(--border); border-radius:12px;
+    font-size:13px; line-height:1.6; color:var(--text); white-space:pre-wrap; word-break:break-word;
+    box-shadow:0 10px 28px rgba(0,0,0,.4); -webkit-app-region:no-drag; user-select:text;
+  }
+  #active .answerbar .empty { color:var(--muted); }
+  #active .answerbar .cursor { display:inline-block; width:2px; background:var(--accent); animation:blink .9s steps(1) infinite; }
+  @keyframes blink { 50%{opacity:0} }
+  #active .answerbar .close { float:right; background:none; border:none; color:var(--muted); font-size:14px; }
+
+  /* ===== key modal ===== */
+  #keyModal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:999; }
+  #keyModal.show { display:flex; }
+  #keyModal .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px; width:92%; box-shadow:0 14px 40px rgba(0,0,0,.6); }
+  #keyModal h3 { margin:0 0 8px; font-size:14px; }
+  #keyModal p { font-size:11px; color:var(--muted); line-height:1.5; }
+  #keyInput { width:100%; padding:8px 10px; margin:10px 0; border:1px solid var(--border); border-radius:6px; background:var(--panel2); color:var(--text); font-family:inherit; }
+  #keyModal .row { display:flex; gap:8px; justify-content:flex-end; }
+</style>
+</head>
+<body>
+
+<!-- ===== 准备态（开始前设置） ===== -->
+<div id="setup">
+  <div class="s-title">
+    <span>&#10024; 准备</span>
+    <span class="spacer"></span>
+    <button class="tb-btn" id="btnMin" title="最小化">&#8211;</button>
+    <button class="tb-btn" id="btnClose" title="关闭">&#215;</button>
+  </div>
+  <div class="row">
+    <button class="btn primary" id="btnMic">&#127908; 开启语音</button>
+    <div id="micDot"><span class="dot"></span><span id="micLabel">未开启</span></div>
+  </div>
+  <div id="micRow" class="row" style="font-size:11px;color:var(--muted);gap:6px;align-items:center;">
+    <span>麦克风：</span>
+    <select id="micSel" style="flex:1;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:11px;"></select>
+    <button class="btn" id="btnMicRefresh" style="padding:5px 8px">刷新</button>
+  </div>
+  <div id="modelRow" class="row" style="font-size:11px;color:var(--muted);gap:6px;align-items:center;">
+    <span>模型：</span>
+    <select id="modelSel" style="flex:1;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:11px;"></select>
+    <button class="btn" id="btnModelRefresh" style="padding:5px 8px">刷新</button>
+  </div>
+  <div id="sourceRow">
+    <span>捕捉：</span>
+    <select id="sourceSel"></select>
+    <button class="btn" id="btnRefresh">刷新</button>
+  </div>
+  <div id="preview"><span class="ph">选择捕捉源后点刷新预览</span></div>
+  <div class="row">
+    <button class="btn" id="btnKey">&#128273; API Key</button>
+    <span id="keyStatus">未设置</span>
+  </div>
+  <div class="row" style="justify-content:space-between;align-items:center">
+  <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">    <input type="checkbox" id="thinkToggle" />🧠 思考模式（慢，默认关）  </label>
+</div>
+<label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:6px">  <input type="checkbox" id="webToggle" />🌐 联网搜索（默认关，需最新信息时开）</label>
+<div id="taskRow" class="row" style="gap:6px;align-items:center;">
+  <input id="taskInput" placeholder="让我操作电脑，例如：把这页选择题都选上" style="flex:1;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:11px;font-family:inherit;" />
+</div>
+<div id="modeRow" class="row" style="font-size:11px;color:var(--muted);gap:6px;align-items:center;">
+  <span>语音用途：</span>
+  <select id="modeSel" style="flex:1;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 6px;font-size:11px;">
+    <option value="auto">自动判断：从你说的话里分辨（推荐）</option>
+    <option value="qa">一律当问题：看一眼答一句</option>
+    <option value="task">一律当任务：说一句它去做</option>
+  </select>
+</div>
+<div class="row" style="gap:8px;align-items:center;">
+  <button class="btn primary" id="btnRunTask" style="flex:1">&#129302; 执行任务</button>
+</div>
+<button class="btn primary" id="btnStart" style="width:100%">&#9654; 开始捕捉</button>
+<div style="font-size:10px;color:var(--muted);text-align:center;line-height:1.5;margin-top:2px;">
+  运行后按住 T 说话，松开结束（它干活时也能插话）；只是快速敲一下 t 仍算正常打字，不会收音
+</div>
+</div>
+
+<!-- ===== 运行态（小状态条 + 自动展开答案） ===== -->
+<div id="active">
+  <div class="statusbar">
+    <span class="dot" id="actDot"></span>
+    <span class="stxt" id="actStatus">准备中...</span>
+    <button class="sbtn" id="actStop" title="停止（也可以用全局热键 Ctrl+Alt+Space）">&#9632;</button>
+  </div>
+  <div id="pttHud"><span class="ico">&#127908;</span><span id="pttText">正在听你说…</span></div>
+  <div class="answerbar" id="answerbar">
+    <button class="close" id="ansClose">&#215;</button>
+    <span id="answer"></span>
+  </div>
+</div>
+
+<!-- ===== key modal ===== -->
+<div id="keyModal">
+  <div class="card">
+    <h3>DeepSeek API Key</h3>
+    <p>粘贴 DeepSeek 官方 API Key（sk- 开头），保存在本机。语音识别用本地 Whisper 离线进行。</p>
+    <input id="keyInput" type="password" placeholder="sk-..." />
+    <div class="row">
+      <button class="btn" id="keyCancel">取消</button>
+      <button class="btn primary" id="keySave">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="./renderer.js"></script>
+</body>
+</html>

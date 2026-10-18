@@ -1,0 +1,5 @@
+{"action":"right-click","target":"章节测验（待完成）行文字","x":136,"y":844,"button":"right","say":"两次单击都没反应，先右键看看这一行是不是链接、能不能在新标签页打开"}
+
+Wait — the action name should be "click" with button right.
+
+{"action":"click","target":"章节测验（待完成）行文字","x":136,"y":844,"button":"right","say":"两次单击都没反应，右键看看这行是不是可打开的链接"}
