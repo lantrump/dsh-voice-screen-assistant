@@ -39,8 +39,6 @@ npm start
 3. 点「开始捕捉」
 4. 按住 T 说话，松开结束；单独敲一下 t 仍然是正常打字
 
-API Key 不会写进代码或仓库，只存在本机的 `%APPDATA%\dsh-voice-screen-assistant` 下。
-
 ## 测试
 
 ```bat
