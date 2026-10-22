@@ -896,6 +896,74 @@ function makeApp(opts = {}) {
     '没有提示你自己核对');
 }
 
+// ---------- 38b) 提交只做一轮：交过之后不许再交一遍 ----------
+{
+  // 实测 2026-10-22：确认提交后页面刷新慢，它又去点右上角提交，连交三轮，任务永远不结束。
+  const SUBMIT = '{"action":"click","target":"提交按钮","x":397,"y":825}';
+  const CONFIRM = '{"action":"click","target":"弹窗里的提交按钮","x":590,"y":585}';
+  const app = makeApp({
+    chatReplies: [
+      SUBMIT, '{"ok":true,"problems":[]}',   // 第一次提交（带自查）
+      CONFIRM,                               // 弹窗里确认 = 第二轮点击
+      SUBMIT,                                // 想再交一次：必须被拦
+      '{"action":"done","reason":"页面显示已提交，任务结束"}',
+    ],
+  });
+  await sleep(10);
+  await app.sandbox.runTask('做完并提交');
+
+  const clicks = app.cmds.filter(x => x.cmd === 'click');
+  const log = app.getEl('answer')._htmlHistory.join('\n');
+  c.section('提交只做一轮');
+  c.eq('前两次（提交 + 弹窗确认）正常发出', clicks.length, 2);
+  c.ok('第三次提交被拦下，没有真的点出去', log.includes('已拦下重复提交'), '没看到拦下的记录');
+  c.ok('并告诉模型先核对结果、不许再点提交',
+    JSON.stringify(app.chats).includes('不许再点提交'), '历史里没有这句');
+  c.ok('任务正常收尾，不会一直交下去', app.getEl('answer').innerHTML.includes('页面显示已提交'),
+    app.getEl('answer').innerHTML.slice(0, 200));
+}
+{
+  const SUBMIT = '{"action":"click","target":"提交按钮","x":397,"y":825}';
+  const CONFIRM = '{"action":"click","target":"弹窗里的提交按钮","x":590,"y":585}';
+  const app = makeApp({
+    chatReplies: [
+      SUBMIT, '{"ok":true,"problems":[]}',
+      CONFIRM,
+      SUBMIT, SUBMIT,   // 连撞两次 → 停下来问你
+    ],
+  });
+  await sleep(10);
+  await app.sandbox.runTask('怎么交都交不上');
+
+  c.section('重复提交撞两次就停下问你');
+  c.eq('只真正交了两轮，没有一次接一次地交', app.cmds.filter(x => x.cmd === 'click').length, 2);
+  c.ok('收尾是停下来问你，不是继续交卷',
+    app.getEl('answer').innerHTML.includes('停下来问你'), app.getEl('answer').innerHTML.slice(0, 200));
+}
+{
+  // 对照：改了答案再交是正常流程（LeetCode 那种"没过→改代码→再提交"），不能被当成重复提交。
+  const SUBMIT = '{"action":"click","target":"提交按钮","x":397,"y":825}';
+  const CONFIRM = '{"action":"click","target":"弹窗里的提交按钮","x":590,"y":585}';
+  const EDIT = '{"action":"type","target":"答案编辑框","text":"改好了","x":500,"y":500}';
+  const app = makeApp({
+    chatReplies: [
+      SUBMIT, '{"ok":true,"problems":[]}',
+      CONFIRM,
+      EDIT,                                  // 改了内容 → 重新提交的计数清零
+      SUBMIT, '{"ok":true,"problems":[]}',
+      '{"action":"done","reason":"改完重新提交后，页面显示已通过"}',
+    ],
+  });
+  await sleep(10);
+  await app.sandbox.runTask('改完再提交');
+
+  const log = app.getEl('answer')._htmlHistory.join('\n');
+  const submits = app.cmds.filter(x => x.cmd === 'click' && x.x === 762);   // 提交按钮的落点
+  c.section('改过答案之后可以再提交');
+  c.eq('改了内容之后的提交没有被拦（提交按钮点了两次）', submits.length, 2);
+  c.ok('没有被误拦成重复提交', !log.includes('已拦下重复提交'), '改了内容还是被拦了');
+}
+
 // ---------- 39) 找不到目标时不替它滚动：只把事实（有没有点中 / 控件什么状态）说给它 ----------
 {
   // 实测里真实发生过的：题看不到，它却去点右侧目录、播放按钮。以前守卫会"替你滚一屏"，

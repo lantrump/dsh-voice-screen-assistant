@@ -699,7 +699,10 @@ const AGENT_PROMPT = [
   '  所以「放大图判读」说它已经选中/已经勾上了，就别再点它；要改答案去点【别的选项】。同一个选项不要点两次。',
   '  我刚点完一个选项，判读却说它【没选中】——那多半是没点中，位置往那行【文字中间】挪一点再点。',
   '· 要滚动就用 scroll，绝对不要为了"让页面获得焦点"去点空白处——滚轮不需要焦点，那种点击很容易戳到选项。',
-  '· 提交/交卷这类不可逆操作之前先核对答案；提交后如果没过，先找出哪一题错了再改，不要反复提交。',
+  '· 提交/交卷这类不可逆操作之前先核对答案。提交只做一轮：点了「提交」再点弹窗里的确认之后，',
+  '  下一步先看页面上有没有「提交成功 / 已提交 / 待批阅 / 成绩」这类结果；有就直接 done，',
+  '  没有就用 say 说清你看到的页面，然后 done，让人来看。绝对不要重复点提交——',
+  '  页面刷新慢不等于没交上，再点一次就是再交一次。',
   '· 填空题一个空一个空来：点第 N 空 → 输入 → 看截图确认填对了 → 再点下一空。不要把几个空的值都打进同一个框。',
   '· 往代码编辑器里写代码/改代码：一律用 lineByLine，一行一行敲，别用粘贴。',
   '  · 粘贴是一瞬间整段糊上去，用户看不见你写了什么；一行一行敲他能看着，也能随时喊停。',
@@ -726,7 +729,7 @@ const AGENT_PROMPT = [
    另有三类真熔断仍然保留（连续看不懂回复、连续执行失败），它们判的是"机器出了故障"，
    与"跑了几步"无关。 */
 const STEP_CAP = 60;
-const agent = { running:false, stop:false, step:0, fails:0, donePushes:0, scrollN:0, scrollDir:'', scrollTotal:0, task:'', log:[], recentClicks:[], liveLines:[], guidance:[], submitBlocks:0, cropTarget:null, blockedN:0, blockedHwnd:null };
+const agent = { running:false, stop:false, step:0, fails:0, donePushes:0, scrollN:0, scrollDir:'', scrollTotal:0, task:'', log:[], recentClicks:[], liveLines:[], guidance:[], submitBlocks:0, submitClicks:0, submitRepeat:0, cropTarget:null, blockedN:0, blockedHwnd:null };
 
 /* 运行中的实时流水账：让你一眼看到它每一步在点哪儿、坐标多少、生效没有。
    点错了你好及时叫停——这比事后看摘要有用得多。 */
@@ -1095,6 +1098,7 @@ async function runTask(task, originVoice){
   agent.log = []; agent.recentClicks = []; agent.liveLines = []; agent.task = task;
   agent.guidance = [];
   agent.verifiedSubmit = false; agent.submitBlocks = 0;
+  agent.submitClicks = 0; agent.submitRepeat = 0;
   agent.cropTarget = null;
   agent.blockedN = 0; agent.blockedHwnd = null;
   state.runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '_' + Math.random().toString(36).slice(2, 6);
@@ -1207,7 +1211,33 @@ async function runTask(task, originVoice){
         // 弹窗里那个"确认提交"不查——那时截图被弹窗挡着，看不到选项，查了必然对不上。
         const targetText = String(action.target || '');
         const isDialogConfirm = /弹窗|对话框|确认/.test(targetText);
-        const isSubmit = action.action === 'click' && /提交|交卷/.test(targetText) && !isDialogConfirm;
+        const isSubmitAttempt = action.action === 'click' && /提交|交卷/.test(targetText);
+        const isSubmit = isSubmitAttempt && !isDialogConfirm;
+
+        // 提交只做一轮：「点提交」+「弹窗里确认」已经是两次点击；中间没改过答案又点提交，
+        // 就是重复交卷。实测 2026-10-22：确认后页面刷新慢，它又去点右上角提交，连交三轮，
+        // 任务永远不结束。这里拦下第三次，并逼它先核对提交结果，而不是再交一遍。
+        // （真的改了答案再交是允许的——type 会把这个计数清零。）
+        if (isSubmitAttempt && agent.submitClicks >= 2) {
+          agent.submitRepeat++;
+          rec.result = '已经提交过，重复提交已拦下';
+          agent.log.push({ n:agent.step, what:'（想再提交一次，已拦下）', result:
+            '这一步【没有执行】：前面已经点过提交并确认过两次了。\n' +
+            '提交是不可逆的，重复点同一个按钮不会让结果变好，只会再交一次。\n' +
+            '现在只做一件事：看当前截图有没有「提交成功 / 已提交 / 待批阅 / 成绩」这类结果。\n' +
+            '· 有 → done，reason 里写出你看到的那行具体文字。\n' +
+            '· 没有 → say 说清你看到的页面，然后 done，让人来看。\n' +
+            '· 不许再点提交/交卷。' });
+          livePush('⛔ 已拦下重复提交（第 ' + agent.submitRepeat + ' 次）——先核对提交结果');
+          if (agent.submitRepeat >= 2) {
+            ending = '停下来问你：它已经提交过，却还想再提交（重复提交已拦下 2 次）。' +
+              '去页面上看一眼交没交上；要它再交一次，就按住 T 说「再提交一次」。';
+            livePush('⏸ ' + ending);
+            break;
+          }
+          continue;
+        }
+
         if (isSubmit) {
           actStatus('交卷前自查…');
           let v = null;
@@ -1340,13 +1370,19 @@ async function runTask(task, originVoice){
           const shotBefore = state.previewDataUrl || '';
           const res = await doAction(action);
           agent.fails = 0;
+          // 交过之后又真的改了内容，允许再交一次（改错题/改代码后重新提交是正常流程）；
+          // 没改内容却反复点提交，才是本轮要拦的。
+          if (action.action === 'type') { agent.submitClicks = 0; agent.submitRepeat = 0; }
+          if (isSubmitAttempt) agent.submitClicks++;
           // 真的改动了状态的动作才算"绕开了"，say/wait 不能用来给同一个窗口的重试清零
           if (res && res.px) { agent.blockedN = 0; agent.blockedHwnd = null; }
           // 留出重绘时间再让下一轮截图。【这是修一个真 bug】：上一步的"动作前"截图是在动作那一刻截的，
           // 而"动作后"的帧在下一轮循环刚开头就截了——中间几乎零间隔。页面重绘稍慢就被判成"没变化"
           // （changedPixels < 20），于是模型被假坏消息骗着去重试同一个点。只对会改变状态的动作等
           // （click/type/drag 才返回 px），滚动/等待不拖时间。
-          if (res && res.px && !agent.stop) await new Promise(function(r){ setTimeout(r, 300); });
+          // 提交要走网络 + 页面跳转：300ms 不够，下一步截到的还是旧页面，
+          // 它会拿着过期的画面去点（实测就点到了右上角账号菜单）。提交后多等一会儿。
+          if (res && res.px && !agent.stop) await new Promise(function(r){ setTimeout(r, isSubmitAttempt ? 1200 : 300); });
           // 滚动之后页面变了：同一个目标可以再点一次，之前的"没点中"也就不算数了
           if (action.action === 'scroll') agent.recentClicks = [];
           // 下一步要做的"感知"分两种，都借 cropTarget 这个口子传递，但去向不同：
@@ -1365,7 +1401,8 @@ async function runTask(task, originVoice){
           // 只说"指令发出去了"，不说"成功"——是否真的生效要靠下一步看截图才知道
           if (action.action === 'click') {
             const entry = { n:agent.step, what:describeAction(action), reason:action.say || action.__reason || '',
-                            result: '已执行 ' + JSON.stringify(res),
+                            result: '已执行 ' + JSON.stringify(res) +
+                              (isSubmitAttempt ? '（提交按钮已点：下一步先看截图核对结果，不要再点提交）' : ''),
                             target: String(action.target || ''), text: String(action.text || ''),
                             clickPx: (res && res.px) ? res.px : null,
                             key: String(action.target || '').replace(/\s+/g, ''),
@@ -1557,6 +1594,8 @@ const PAUSE_RE = /(暂停|停一下|停下来|先停|停止|别动|停停)/;
 function addGuidance(said){
   const t = String(said || '').trim();
   if (!t) return;
+  // 你明确让它再交一次：解开"提交只做一轮"的计数，否则会被当成重复提交拦下。
+  if (/(再提交|重新提交|再交|继续提交)/.test(t)) { agent.submitClicks = 0; agent.submitRepeat = 0; }
   agent.guidance.push({ step: agent.step, text: t });
   if (agent.guidance.length > 5) agent.guidance.shift();
   livePush('🎤 你说：' + t + '（已带进下一步判断）');

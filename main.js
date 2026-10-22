@@ -725,5 +725,29 @@ ipcMain.handle('run-artifact', (e, msg) => {
     return { ok: false, error: String((err && err.message) || err) };
   }
 });
-ipcMain.handle('enter-active', () => { if (win) { win.setResizable(true); win.setSize(300, 260); win.setResizable(false); } return true; });
-ipcMain.handle('leave-active', () => { if (win) { win.setResizable(true); win.setSize(400, 600, true); win.setResizable(false); } return true; });
+/* 运行态小窗自动贴主屏右上角：点完「开始捕捉」不用再手动拖。 */
+function placeTopRight(width, height) {
+  if (!win) return;
+  const a = screen.getPrimaryDisplay().workArea;
+  const m = 8;
+  win.setPosition(Math.round(a.x + a.width - width - m), Math.round(a.y + m));
+}
+ipcMain.handle('enter-active', () => {
+  if (win) {
+    win.setResizable(true); win.setSize(300, 260); win.setResizable(false);
+    placeTopRight(300, 260);
+  }
+  return true;
+});
+ipcMain.handle('leave-active', () => {
+  if (win) {
+    win.setResizable(true); win.setSize(400, 600, true); win.setResizable(false);
+    // 退出运行态窗口会变宽；原来贴着右边缘的话会有一半跑出屏幕，往回挪进来。
+    const a = screen.getPrimaryDisplay().workArea;
+    const p = win.getPosition();
+    const nx = Math.max(a.x, Math.min(p[0], a.x + a.width - 400));
+    const ny = Math.max(a.y, Math.min(p[1], a.y + a.height - 600));
+    if (nx !== p[0] || ny !== p[1]) win.setPosition(Math.round(nx), Math.round(ny));
+  }
+  return true;
+});
